@@ -1,0 +1,136 @@
+---
+- hosts: all
+  user: ansibleuser
+  sudo: yes
+  vars:
+    mysql_root_pw: "test" #変更推奨
+    
+    php_7:
+      # httpd 用 php 設定ファイル(原本)
+      httpd_config_org_path: /etc/httpd/conf.d/php.conf
+      # httpd 用 php 設定ファイル
+      httpd_config_path: /etc/httpd/conf/extra/httpd-php.conf
+      # httpd 用 php追加読み込み文言
+      httpd_config_include_php: 'Include conf/extra/httpd-php.conf'
+      # php 設定ファイル
+      config_path: /etc/php.ini
+      # php 設定ファイル変更箇所
+      config_changes:
+        - regexp: '^;(date.timezone) =.*'
+          line: '\1 = Asia/Tokyo'
+        - regexp: '^;(mbstring.language) =.*'
+          line: '\1 = Japanese'
+        - regexp: '^;(mbstring.internal_encoding) =.*'
+          line: '\1 = UTF-8'
+        - regexp: '^;(mbstring.http_input) =.*'
+          line: '\1 = pass'
+        - regexp: '^;(mbstring.http_output) =.*'
+          line: '\1 = pass'
+        - regexp: '^;(mbstring.encoding_translation) =.*'
+          line: '\1 = off'
+          
+  tasks:
+    - name: SELinuxの状態確認
+      command: /usr/sbin/selinuxenabled
+      register: result
+      changed_when: false
+      failed_when: result.rc not in [0, 1]
+
+    - name: SELinuxmoduleを用いて起動時にSELinux無効化 (/etc/sysconfig/selinux)
+      become: yes
+      selinux: state=disabled
+      when: result.rc == 0
+
+    - name: SELinux無効化 (setenforce)
+      become: yes
+      command: setenforce 0
+      when: result.rc == 0
+
+    - name: firewalld状態確認
+      become: yes
+      shell: firewall-cmd --state
+      register: firewall_state
+      ignore_errors: yes
+      changed_when: false
+      check_mode: no
+
+    - name: firewalldでHTTPを許可
+      become: yes
+      command: firewall-cmd --zone=public --add-service=http --permanent
+      when: firewall_state.rc == 0
+
+    - name: firewalldのポリシーをリロード
+      become: yes
+      command: firewall-cmd --reload
+      when: firewall_state.rc == 0
+
+    - name: remi レポジトリのインストール
+      yum:
+        name:  http://rpms.famillecollet.com/enterprise/remi-release-7.rpm
+        state: present
+
+
+    - name: apacheインストール
+      yum: name={{ item }} state=latest
+      items:
+        - httpd
+        - httpd-devel
+        - mod_ssl
+      
+    - name: mysqlインストール
+      yum: name=mysql state=latest
+      
+    - name: phpインストール
+      yum: name={{ item }} state=present
+      enablerepo: remi-php70
+      items:
+        - php
+        - php-mbstring
+        - php-devel
+        - php-pdo
+        - php-gd
+        - php-mysqlnd
+      
+    - name: mysql(mariadb)serverインストール
+      yum: name=mariadb-server state=latest
+      
+    - name: apache起動
+      become: yes
+      service:
+        name=httpd
+        state=restarted
+        enabled=yes
+      
+    - name: mysql(mariadb)起動
+      become: yes
+      service:
+        name=mariadb
+        state=restarted
+        enabled=yes
+        
+    - name: httpd 用 php 設定ファイルの配置
+      shell: "mv {{ php_7.httpd_config_org_path }} {{ php_7.httpd_config_path }}"
+      args:
+        creates: "{{ php_7.httpd_config_path }}"
+
+    - name: php 設定ファイル編集
+      lineinfile:
+        dest: "{{ php_7.config_path }}"
+        backrefs: yes
+        regexp: '{{ item.regexp}}'
+        line: '{{ item.line }}'
+      with_items: "{{ php_7.config_changes }}"
+
+    - name: php用 sample ファイル配置
+      shell: "echo '<?php phpinfo() ?>' > /var/www/html/info.php"
+      args:
+        creates: "/var/www/html/info.php"
+        
+    - name: アドレス取得
+      command: curl inet-ip.info
+      register: address
+    
+    - name: アドレス表示
+      debug:
+        msg='完了。 http://{{ address.stdout }} にアクセスしてください。'
+       

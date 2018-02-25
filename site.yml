@@ -1,0 +1,6 @@
+- hosts: all
+  user: ansibleuser
+  sudo: yes
+  vars:
+        mysql_root_pw: "test" #•ÏX„§
+        
