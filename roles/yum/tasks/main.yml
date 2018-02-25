@@ -9,9 +9,9 @@
       # httpd 用 php 設定ファイル(原本)
       httpd_config_org_path: /etc/httpd/conf.d/php.conf
       # httpd 用 php 設定ファイル
-      httpd_config_path: /etc/httpd/conf/extra/httpd-php.conf
+      httpd_config_path: /etc/httpd/conf/httpd-php.conf
       # httpd 用 php追加読み込み文言
-      httpd_config_include_php: 'Include conf/extra/httpd-php.conf'
+      httpd_config_include_php: 'Include conf/httpd-php.conf'
       # php 設定ファイル
       config_path: /etc/php.ini
       # php 設定ファイル変更箇所

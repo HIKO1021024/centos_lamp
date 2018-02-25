@@ -1,6 +1,35 @@
-- hosts: all
-  user: ansibleuser
-  sudo: yes
-  vars:
-        mysql_root_pw: "test" #変更推奨
-        
+- name: SELinuxの状態確認
+  command:
+    /usr/sbin/selinuxenabled
+  register:
+    result
+  changed_when: false
+  failed_when: result.rc not in [0, 1]
+
+- name: SELinuxmoduleを用いて起動時にSELinux無効化 (/etc/sysconfig/selinux)
+  become: yes
+  selinux: state=disabled
+  when: result.rc == 0
+
+- name: SELinux無効化 (setenforce)
+  become: yes
+  command: setenforce 0
+  when: result.rc == 0
+
+- name: firewalld状態確認
+  become: yes
+  shell: firewall-cmd --state
+  register: firewall_state
+  ignore_errors: yes
+  changed_when: false
+  check_mode: no
+
+- name: firewalldでHTTPを許可
+  become: yes
+  command: firewall-cmd --zone=public --add-service=http --permanent
+  when: firewall_state.rc == 0
+
+- name: firewalldのポリシーをリロード
+  become: yes
+  command: firewall-cmd --reload
+  when: firewall_state.rc == 0
